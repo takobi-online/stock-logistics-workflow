@@ -1,10 +1,13 @@
 # Copyright 2020 Openindustry.it SAS
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
+# License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
+# License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
 
 from odoo import models, fields, api, _
 from odoo.exceptions import Warning, UserError
 from datetime import *
 from odoo.tools.misc import DEFAULT_SERVER_DATETIME_FORMAT
+from odoo.addons import decimal_precision as dp
 import logging
 import unicodecsv
 import base64
@@ -61,10 +64,14 @@ class StockCloseImportWizard(models.TransientModel):
             wcpl = self.env['stock.close.period.line']
             self.log = []
             total = 0.0
+            #dp_qty = dp.get_precision('Product Unit of Measure'),
+            dp_qty = 4
+            #dp_price = dp.get_precision('Product Price')
+            dp_price = 5
             for index, row in enumerate(lines):
                 product_id = products[row['CODE']].id
-                unit_cost = round(float(row['COST']), 4)
-                qty = round(float(row['QTY']), 4)
+                unit_cost = round(float(row['COST']), dp_price)
+                qty = round(float(row['QTY']), dp_qty)
                 total += unit_cost * qty
                 wcpl_id = wcpl.with_context(tracking_disable=True).create({
                     'close_id': self.close_id.id,

@@ -16,6 +16,8 @@
     'data': [
         'views/stock_close_views.xml',
         'wizards/stock_close_import.xml',
+        'wizards/stock_close_print.xml',
+        'reports/xlsx_stock_close_print.xml',
         'security/ir.model.access.csv',
     ],
     'installable': True,

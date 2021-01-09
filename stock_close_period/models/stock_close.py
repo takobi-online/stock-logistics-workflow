@@ -2,7 +2,6 @@
 from odoo import api, fields, models, _
 from odoo.addons import decimal_precision as dp
 from odoo.exceptions import UserError, ValidationError
-from odoo.addons import decimal_precision as dp
 import logging
 from datetime import datetime
 logger = logging.getLogger(__name__)
@@ -35,8 +34,7 @@ class StockClosePeriod(models.Model):
     amount = fields.Float(
         string="Stock Amount Value",
         readonly=True,
-        copy=False,
-        digits=dp.get_precision('Product Price'))
+        copy=False,)
     work_start = fields.Datetime(
         'Work Start',
         readonly=True,
@@ -81,7 +79,6 @@ class StockClosePeriod(models.Model):
                 self.state = 'confirm'
         return True
 
-
     def _get_product_lines(self):
         #   add all products actived not services type
         query = """
@@ -89,7 +86,7 @@ class StockClosePeriod(models.Model):
             SELECT
               %r as close_id,
               product_product.id as product_id,
-              product_template.default_code as product_code,              
+              product_template.default_code as product_code,
               product_template.name as product_name,
               product_template.uom_id as product_uom,    
               product_category.complete_name as complete_name,
@@ -100,9 +97,9 @@ class StockClosePeriod(models.Model):
               public.product_product,
               public.product_category
             WHERE
-              product_product.product_tmpl_id = product_template.id and              
               product_template.type != 'service' and 
-              product_template.categ_id = product_category.id
+              product_product.product_tmpl_id = product_template.id and 
+              product_template.categ_id = product_category.id 
             ORDER BY
                 product_product.id;
             """  % (self.id)
@@ -196,15 +193,14 @@ class StockClosePeriodLine(models.Model):
     categ_name = fields.Char(
         'Category Name', related='product_id.categ_id.complete_name', store=True, readonly=True)
     evaluation_method = fields.Selection(string='Evaluation method', selection=[
-        ('purchase', 'Purchase'),
-        ('standard', 'Standard'),
-        ('production', 'Production')],
+        ('purchase', _('Purchase')),
+        ('standard', _('Standard')),
+        ('production', _('Production'))],
         copy=False)
     product_qty = fields.Float(
         'End Quantity',
         digits=dp.get_precision('Product Unit of Measure'),
         default=0)
     price_unit = fields.Float(
-        string='End Average Price',
-        digits=dp.get_precision('Product Price'))
+        string='End Average Price', digits=dp.get_precision('Product Price'))
 

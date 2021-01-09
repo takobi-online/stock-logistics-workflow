@@ -28,7 +28,7 @@
     <menuitem id="menu_stock_close_import_wizard"
         action="action_stock_close_import_wizard"
         parent="menu_stock_close_group"
-        sequence="903"
+        sequence="110"
     />
 
 </odoo>

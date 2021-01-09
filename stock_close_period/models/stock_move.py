@@ -41,8 +41,8 @@ class StockMoveLine(models.Model):
         #
 
         _logger.info('Recompute average cost period. Making in 3 phases:')
-        _logger.info("[1/3] Recompute average cost product")
-        _logger.info("[2/3] Recompute standard cost product")
+        _logger.info("[1/3] Recompute cost product purchase")
+        _logger.info("[2/3] Recompute cost product production")
         _logger.info("[3/3] Write results")
 
         self._recompute_cost_stock_move_purchase()
@@ -78,7 +78,7 @@ class StockMoveLine(models.Model):
         #   search only lines not elaborated
         closing_line_ids = wcpl.search([
             ('close_id', '=', closing_id.id),
-            ('price_unit' , '=', 0)
+            ('price_unit', '=', 0)
         ])
 
         # get last_close_date
@@ -101,7 +101,11 @@ class StockMoveLine(models.Model):
             #   counter
             i += 1
 
-            _logger.info('[1/3] ' + str(i) + ' - ' + product_id.default_code)
+            if product_id.default_code:
+                _logger.info('[1/3] ' + str(i) + ' - ' + product_id.default_code)
+            else:
+                _logger.info('[1/3] ' + str(i) + ' - ' + product_id.name)
+
 
             # se il prodotto ha una bom, non deve processarlo
             if mb._bom_find(product_id):
@@ -149,6 +153,24 @@ class StockMoveLine(models.Model):
                         # fissa il punto iniziale
                         amount = start_price * start_qty
                         qty = start_qty
+                        new_price = start_price
+
+                    else:
+                        # se non trova un valore iniziale, imposta il costo al valore
+                        # alla data di partenza, altrimenti i movimenti di scarico
+                        # rimangono a zero
+                        start_price = product_id.get_history_price(company_id, move_id.date)
+
+                        ph.create({
+                            'product_id': product_id.id,
+                            'datetime': first_move_date,
+                            'cost': start_price,
+                            'company_id': company_id,
+                        })
+
+                        # fissa il punto iniziale
+                        amount = 0
+                        qty = 0
                         new_price = start_price
 
                 #   si tratta di un acquisto
@@ -230,12 +252,18 @@ class StockMoveLine(models.Model):
 
     def _add_standard_cost_product(self):
         #
-        #   Produzione esterna: Prezzo medio ponderato nel periodo.
+        #   Produzione INTERNA: Prezzo STANDARD medio ponderato nel periodo.
+        #   Produzione ESTERNA: Prezzo STANDARD medio ponderato nel periodo.
         #
         #   il calcolo della media ponderata è uguale che per gli acquisti.
         #   il valore del prodotto è dato da:
-        #   + somma dei costi medi dei componenti inviati al fornitore
-        #   + somma delle lavorazioni eseguite
+        #   → Produzione INTERNA:
+        #   + somma dei costi STANDARD dei componenti semilavorati
+        #   + somma dei costi STANDARD dei componenti di acqusto
+        #
+        #   → Produzione ESTERNA:
+        #   + somma dei costi STANDARD dei componenti inviati al fornitore
+        #   + somma degli acquisto per le lavorazioni eseguite
         #
 
         _logger.info("[2/3] Start add standard cost product")
@@ -255,11 +283,10 @@ class StockMoveLine(models.Model):
             ('close_id', '=', closing_id.id),
         ])
 
-        #   search only lines not elaborated and product_qty > 0
+        #   search only lines not elaborated
         closing_line_ids = wcpl.search([
             ('close_id', '=', closing_id.id),
-            ('price_unit' , '=', 0),
-            ('product_qty', '>', 0)
+            ('price_unit', '=', 0)
         ])
 
         # imposta il metodo di calcolo
@@ -288,7 +315,11 @@ class StockMoveLine(models.Model):
             # counter
             i += 1
 
-            _logger.info('[2/3] ' + str(i) + ' - ' + product_id.default_code)
+            first_move_date = False
+            if product_id.default_code:
+                _logger.info('[2/3] ' + str(i) + ' - ' + product_id.default_code)
+            else:
+                _logger.info('[2/3] ' + str(i) + ' - ' + product_id.name)
 
             #   recupera i movimenti di magazzino
             move_ids = sm.search([
@@ -297,33 +328,35 @@ class StockMoveLine(models.Model):
                 ('product_id', '=', product_id.id),
                 ('date', '>', last_close_date),
                 ('active', '>=', 0),
-            ],order='date')
+            ], order='date')
 
             std_cost = 0.0
             for move_id in move_ids:
 
-                std_cost = 0.0
-                if closing_id.force_standard_price:
-                    # recupera il prezzo standard alla data del movimento
-                    std_cost = product_id.get_history_customprice(company_id, move_id.date)
-                else:
-                    # recupero il costo industriale della BOM
-                    bom = mb._bom_find(template_id)
-                    if bom:
-                        # bom cost at date
-                        node = bom.get_bom_cost(closing_id.close_date)
-                        std_cost = round(node['product_cost'], 5)
+                _logger.info('[2/3] move id: ' + str(move_id))
 
-                # se non trova std_cost, prende il prezzo ora disponibile
-                if std_cost == 0:
-                    std_cost = product_id.standard_price
+                # ricalcola std_cost considerando solo i versamenti di produzione
+                # verso il magazzino prinipale.
+                # _todo_:
+                #   sostituire il 15 con il codice del magazzino azienda
+                if move_id.location_dest_id.id == 15 or std_cost == 0:
+                    if closing_id.force_standard_price:
+                        # recupera il prezzo standard alla data del movimento
+                        std_cost = product_id.get_history_customprice(company_id, move_id.date)
+                    else:
+                        # recupero il costo industriale della BOM [costo standard bom]
+                        bom = mb._bom_find(template_id)
+                        if bom:
+                            # standard bom cost at date
+                            node = bom.get_bom_cost(move_id.date)
+                            std_cost = round(node['product_cost2'], 5)
 
-                #   imposta su movimento di magazzino il nuovo costo medio ponderato
+                    # se non trova std_cost, prende il prezzo ora disponibile
+                    if std_cost == 0:
+                        std_cost = product_id.standard_price
+
+                # imposta su movimento di magazzino il nuovo costo medio ponderato
                 if move_id.price_unit != std_cost:
-                    # move_id.price_unit = std_cost
-                    # move_id.value = move_id.ordered_qty * std_cost
-                    # move_id.remaining_value = move_id.ordered_qty * std_cost
-
                     # fatto con sql altrimenti l'ORM scatena l'inferno
                     value = move_id.ordered_qty * std_cost
                     remaining_value = move_id.ordered_qty * std_cost
@@ -386,7 +419,7 @@ class StockMoveLine(models.Model):
                 public.stock_close_period_line
             WHERE
                 close_id = %r and product_qty = 0;
-            """  % (closing_id.id)
+            """ % (closing_id.id)
         self.env.cr.execute(query)
 
         _logger.info("[3/3] Finish writing results")
@@ -405,7 +438,7 @@ class StockMoveLine(models.Model):
         closing_line_id = wcpl.search([
             ('close_id', '=', closing_id.id),
             ('product_id' , '=', product_id)
-        ],limit=1)
+        ], limit=1)
 
         if closing_line_id:
             start_qty = closing_line_id.product_qty
