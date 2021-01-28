@@ -3,13 +3,14 @@
 from odoo import models
 from odoo.tools.translate import _
 
+
 class XlsxStockClosePeriod(models.AbstractModel):
     _name = 'report.stock_close_period.report_xlsx_stock_close_print'
     _inherit = 'report.report_xlsx.abstract'
 
     def generate_xlsx_report(self, workbook, data, extra):
         ids = data['ids']
-        close_name = data['form']['close_name']        
+        close_name = data['form']['close_name']
 
         lines = self.env['stock.close.period.line'].browse(ids)
 

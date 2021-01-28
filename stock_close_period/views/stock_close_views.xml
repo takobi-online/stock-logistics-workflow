@@ -43,22 +43,22 @@
                     <button name="action_start" states="draft" string="Start" type="object" class="oe_highlight" groups="stock.group_stock_user"/>
                     <button name="action_done" states="confirm" string="Validate" type="object" class="oe_highlight" groups="stock.group_stock_manager"/>
                     <button name="action_set_to_draft" states="cancel" string="Set to Draft" type="object"/>
-                    <button name="action_cancel_draft" states="confirm" string="Cancel" type="object"/>
+                    <!-- https://github.com/marcelofrare/stock-logistics-workflow/commit/a2790a12047ca96a7c25dfa2e6dcb384e15b13f1#r46517007 -->
+                    <!-- <button name="action_cancel_draft" states="confirm" string="Cancel" type="object"/> -->
                     <field name="state" widget="statusbar" statusbar_visible="draft,confirm,done"/>
                 </header>
                 <sheet>
                     <group>
                         <div class="oe_title">
                             <label for="name" class="oe_edit_only"/>
-                            <h1><field name="name" placeholder="e.g. Annual Closing 2020"/></h1>
+                            <h1><field name="name" placeholder="e.g. Annual Closing YEAR"/></h1>
                         </div>
-                        <group>
-                            <field name="state"/>
-                            <field name="close_date"/>
-                            <field name="amount"/>
-                            <field name="force_standard_price"/>
-                            <field name="force_archive"/>
-                        </group>
+                    </group>
+                    <group>
+                        <field name="close_date"/>
+                        <field name="amount"/>
+                        <field name="force_standard_price"/>
+                        <field name="force_archive"/>
                     </group>
                     <notebook>
                         <page string="Product list">

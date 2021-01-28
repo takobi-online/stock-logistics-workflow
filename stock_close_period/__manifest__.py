@@ -2,17 +2,25 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 {
     'name': 'Stock Close Period',
-    'summary': 'Stock Close Period',
-    'version': '11.0.2.0.0',
+    'summary': 'Weighted average cost method for inventory valuation',
+    'version': '12.0.1.0.0',
     'category': 'Stock',
     'author': 'Pordenone Linux User Group (PNLUG), Odoo Community Association (OCA)',
+    'maintainers': ["marcelofrare", "andreampiovesana"],
     'website': 'https://github.com/OCA/stock-logistics-workflow',
     'license': 'AGPL-3',
     'depends': [
         'product_price_history',
         'stock',
-        'mrp_bom_structure_report',
+        'mrp',  # TODO bridge module adding mrp functionalities
+        'report_xlsx',
+        # 'purchase_discount', TODO evaluate bridge module
     ],
+    'external_dependencies': {
+        'python': [
+            'unicodecsv'
+        ],
+    },
     'data': [
         'views/stock_close_views.xml',
         'wizards/stock_close_import.xml',

@@ -1,17 +1,12 @@
 from odoo import models, api, fields, _
-from odoo.tools import DEFAULT_SERVER_DATETIME_FORMAT
-from odoo.tools.misc import DEFAULT_SERVER_DATE_FORMAT
-from odoo.exceptions import UserError
-
-from datetime import datetime
 
 
 class StockClosePrint(models.TransientModel):
     _name = 'stock.close.print.wizard'
+    _description = 'stock.close.print.wizard'
 
     close_name = fields.Many2one(comodel_name='stock.close.period',
                                  string=_('Close Period'))
-
 
     @api.multi
     def generate_report(self):

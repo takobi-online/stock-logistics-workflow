@@ -1,10 +1,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 from odoo import api, fields, models, _
 from odoo.addons import decimal_precision as dp
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 import logging
 from datetime import datetime
 logger = logging.getLogger(__name__)
+
 
 class StockClosePeriod(models.Model):
     _name = "stock.close.period"
@@ -13,7 +14,7 @@ class StockClosePeriod(models.Model):
     name = fields.Char(
         'Reference',
         readonly=True, required=True,
-        states={('draft'): [('readonly', False)],('confirm'): [('readonly', False)]})
+        states={'draft': [('readonly', False)], 'confirm': [('readonly', False)]})
     line_ids = fields.One2many(
         'stock.close.period.line', 'close_id', string='Product',
         copy=True, readonly=False,
@@ -28,9 +29,10 @@ class StockClosePeriod(models.Model):
     close_date = fields.Date(
         'Close Date',
         readonly=True, required=True,
-        default=fields.Datetime.now,
-        states={('draft'): [('readonly', False)], ('confirm'): [('readonly', False)]},
-        help="The date that will be used for the store the product quantity and average cost.")
+        default=fields.Date.today,
+        states={'draft': [('readonly', False)], 'confirm': [('readonly', False)]},
+        help="The date that will be used for the store the product quantity "
+             "and average cost.")
     amount = fields.Float(
         string="Stock Amount Value",
         readonly=True,
@@ -42,9 +44,12 @@ class StockClosePeriod(models.Model):
     work_end = fields.Datetime(
         'Work End',
         readonly=True)
-    force_standard_price = fields.Boolean(default=False,
-        help="Forces the use of the standard price instead of calculating the cost from the BOM.")
-    force_archive = fields.Boolean(default=False,
+    force_standard_price = fields.Boolean(
+        default=False,
+        help="Forces the use of the standard price instead of calculating the cost "
+             "from the BOM.")
+    force_archive = fields.Boolean(
+        default=False,
         help="Marks as archive the inventory move lines used during the process.")
 
     @api.model
@@ -58,7 +63,8 @@ class StockClosePeriod(models.Model):
     def _check_existing(self):
         existings = self.search([('state', '=', 'confirm')])
         if existings:
-            raise UserError(_("You cannot have two stock closing in state 'in Progress'"))
+            raise UserError(_(
+                "You cannot have two stock closing in state 'in Progress'"))
         return existings
 
     def action_set_to_draft(self):
@@ -72,7 +78,7 @@ class StockClosePeriod(models.Model):
 
     def action_start(self):
         if not self._check_existing():
-            for closing in self.filtered(lambda x: x.state not in ('done','cancel')):
+            for closing in self.filtered(lambda x: x.state not in ('done', 'cancel')):
                 # add product line
                 closing._get_product_lines()
                 # set confirm status
@@ -80,29 +86,31 @@ class StockClosePeriod(models.Model):
         return True
 
     def _get_product_lines(self):
-        #   add all products actived not services type
+        #   add all active products, not service type
+        # TODO multi company
         query = """
-            INSERT INTO stock_close_period_line(close_id, product_id, product_code, product_name, product_uom_id, categ_name, product_qty, price_unit)
+            INSERT INTO stock_close_period_line(close_id, product_id, product_code,
+            product_name, product_uom_id, categ_name, product_qty, price_unit)
             SELECT
               %r as close_id,
               product_product.id as product_id,
               product_template.default_code as product_code,
               product_template.name as product_name,
-              product_template.uom_id as product_uom,    
+              product_template.uom_id as product_uom,
               product_category.complete_name as complete_name,
               0 as product_qty,
               0 as price_unit
             FROM
-              public.product_template,
-              public.product_product,
-              public.product_category
+              product_template,
+              product_product,
+              product_category
             WHERE
-              product_template.type != 'service' and 
-              product_product.product_tmpl_id = product_template.id and 
-              product_template.categ_id = product_category.id 
+              product_template.type != 'service' and
+              product_product.product_tmpl_id = product_template.id and
+              product_template.categ_id = product_category.id
             ORDER BY
                 product_product.id;
-            """  % (self.id)
+            """ % self.id
 
         self.env.cr.execute(query)
 
@@ -117,16 +125,16 @@ class StockClosePeriod(models.Model):
             closing_line_id.product_qty = product_qty
 
     def action_done(self):
-        if self._check_qty_available() == False:
+        if not self._check_qty_available():
             raise UserError(
-                _("Is not possible continue the execution. There are product with quantities < 0."))
+                _("Is not possible continue the execution. There are product with "
+                  "quantities < 0."))
 
         self._average_price_recalculate()
         if self.force_archive:
             self._deactivate_moves()
         self.state = 'done'
-        DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
-        self.work_end = datetime.now().strftime(DATETIME_FORMAT)
+        self.work_end = datetime.now()
         return True
 
     def _check_qty_available(self):
@@ -147,28 +155,29 @@ class StockClosePeriod(models.Model):
 
     def _deactivate_moves(self):
         #   set active = False on stock_move and stock_move_line
+        # TODO multi company
         query = """
-        UPDATE 
-            public.stock_move
-        SET 
-            active = false 
+        UPDATE
+            stock_move
+        SET
+            active = false
         WHERE
             date <= date(%r) and state = 'done';
-        """  % (self.close_date)
+        """ % self.close_date
         self.env.cr.execute(query)
 
+        # TODO multi company
         query = """
-        UPDATE 
-            public.stock_move_line 
-        SET 
-            active = false 
+        UPDATE
+            stock_move_line
+        SET
+            active = false
         WHERE
             date <= date(%r) and state = 'done';
-        """  % (self.close_date)
+        """ % self.close_date
         self.env.cr.execute(query)
 
         return True
-
 
 
 class StockClosePeriodLine(models.Model):
@@ -187,11 +196,13 @@ class StockClosePeriodLine(models.Model):
     product_code = fields.Char(
         'Product Code', related='product_id.default_code', store=True, readonly=True)
     product_uom_id = fields.Many2one(
-        'product.uom', 'UOM',
+        'uom.uom', 'UOM',
         required=True,
-        default=lambda self: self.env.ref('product.product_uom_unit', raise_if_not_found=True))
+        default=lambda self: self.env.ref('uom.product_uom_unit',
+                                          raise_if_not_found=True))
     categ_name = fields.Char(
-        'Category Name', related='product_id.categ_id.complete_name', store=True, readonly=True)
+        'Category Name', related='product_id.categ_id.complete_name', store=True,
+        readonly=True)
     evaluation_method = fields.Selection(string='Evaluation method', selection=[
         ('purchase', _('Purchase')),
         ('standard', _('Standard')),

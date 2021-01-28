@@ -1,12 +1,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
 
-from odoo import api, fields, models, _
-from odoo.exceptions import UserError
-from odoo.tools.float_utils import float_compare, float_round, float_is_zero
+from odoo import fields, models, _
 from odoo.addons import decimal_precision as dp
 import logging
-from datetime import datetime, date, timedelta
 _logger = logging.getLogger(__name__)
 
 
@@ -15,6 +12,7 @@ class StockMove(models.Model):
 
     # related field to manage closed lines
     active = fields.Boolean(default=True)
+
 
 class StockMoveLine(models.Model):
     _inherit = 'stock.move.line'
@@ -67,9 +65,7 @@ class StockMoveLine(models.Model):
         wcp = self.env['stock.close.period']
         wcpl = self.env['stock.close.period.line']
         sm = self.env['stock.move']
-        sml = self.env['stock.move.line']
         ph = self.env['product.price.history']
-        pp = self.env['product.product']
         mb = self.env['mrp.bom']
         i = 0
 
@@ -82,7 +78,8 @@ class StockMoveLine(models.Model):
         ])
 
         # get last_close_date
-        last_closed_id = wcp.search([('state', '=', 'done')], order='close_date desc', limit=1)
+        last_closed_id = wcp.search(
+            [('state', '=', 'done')], order='close_date desc', limit=1)
         if last_closed_id:
             # get from last closed
             last_close_date = last_closed_id.close_date
@@ -106,19 +103,18 @@ class StockMoveLine(models.Model):
             else:
                 _logger.info('[1/3] ' + str(i) + ' - ' + product_id.name)
 
-
             # se il prodotto ha una bom, non deve processarlo
             if mb._bom_find(product_id):
                 continue
 
-            #   recupera i movimenti di magazzino
+            # recupera i movimenti di magazzino
             move_ids = sm.search([
                 ('state', '=', 'done'),
                 ('product_qty', '>', 0),
                 ('product_id', '=', product_id.id),
                 ('date', '>', last_close_date),
                 ('active', '>=', 0),
-            ],order='date')
+            ], order='date')
 
             first_move_date = False
             qty = 0
@@ -187,12 +183,12 @@ class StockMoveLine(models.Model):
                     else:
                         # è un vero PO da mediare
                         # fa prevalere vale il prezzo sul PO nel caso sia stato aggiornato
-                        price = move_id.purchase_line_id.price_unit * (1 - (move_id.purchase_line_id.discount or 0.0) / 100.0)
+                        price = move_id.purchase_line_id.price_unit
                         if move_id.price_unit != price:
                             new_price = price
                             move_id.price_unit = new_price
-                            move_id.value = move_id.ordered_qty * new_price
-                            move_id.remaining_value = move_id.ordered_qty * new_price
+                            move_id.value = move_id.product_uom_qty * new_price
+                            move_id.remaining_value = move_id.product_uom_qty * new_price
 
                         #   calculate new ovl price if price > 0
                         if price > 0:
@@ -223,14 +219,14 @@ class StockMoveLine(models.Model):
                         # move_id.remaining_value = move_id.ordered_qty * new_price
 
                         # fatto con sql altrimenti l'ORM scatena l'inferno
-                        value = move_id.ordered_qty * new_price
-                        remaining_value = move_id.ordered_qty * new_price
+                        value = move_id.product_uom_qty * new_price
+                        remaining_value = move_id.product_uom_qty * new_price
 
                         #   set active = False on stock_move and stock_move_line
-                        query = """                        
-                        UPDATE 
-                            public.stock_move
-                        SET 
+                        query = """
+                        UPDATE
+                            stock_move
+                        SET
                             price_unit = %r,
                             value = %r,
                             remaining_value = %r
@@ -239,7 +235,7 @@ class StockMoveLine(models.Model):
                         """ % (new_price, value, remaining_value, move_id.id)
                         self.env.cr.execute(query)
 
-                if i%100 == 0:
+                if i % 100 == 0:
                     logging.info(str(i)+' move recomputed')
                     self.env.cr.commit()
 
@@ -271,7 +267,6 @@ class StockMoveLine(models.Model):
         wcp = self.env['stock.close.period']
         wcpl = self.env['stock.close.period.line']
         sm = self.env['stock.move']
-        pp = self.env['product.product']
         mb = self.env['mrp.bom']
         i = 0
 
@@ -279,7 +274,7 @@ class StockMoveLine(models.Model):
         closing_id = wcp.search([('state', '=', 'confirm')], limit=1)
 
         #   search lines
-        closing_line_ids = wcpl.search([
+        wcpl.search([
             ('close_id', '=', closing_id.id),
         ])
 
@@ -315,7 +310,6 @@ class StockMoveLine(models.Model):
             # counter
             i += 1
 
-            first_move_date = False
             if product_id.default_code:
                 _logger.info('[2/3] ' + str(i) + ' - ' + product_id.default_code)
             else:
@@ -342,7 +336,7 @@ class StockMoveLine(models.Model):
                 if move_id.location_dest_id.id == 15 or std_cost == 0:
                     if closing_id.force_standard_price:
                         # recupera il prezzo standard alla data del movimento
-                        std_cost = product_id.get_history_customprice(company_id, move_id.date)
+                        std_cost = product_id.get_history_price(company_id, move_id.date)
                     else:
                         # recupero il costo industriale della BOM [costo standard bom]
                         bom = mb._bom_find(template_id)
@@ -358,14 +352,14 @@ class StockMoveLine(models.Model):
                 # imposta su movimento di magazzino il nuovo costo medio ponderato
                 if move_id.price_unit != std_cost:
                     # fatto con sql altrimenti l'ORM scatena l'inferno
-                    value = move_id.ordered_qty * std_cost
-                    remaining_value = move_id.ordered_qty * std_cost
+                    value = move_id.product_uom_qty * std_cost
+                    remaining_value = move_id.product_uom_qty * std_cost
 
                     #   set active = False on stock_move and stock_move_line
-                    query = """                        
-                    UPDATE 
-                        public.stock_move
-                    SET 
+                    query = """
+                    UPDATE
+                        stock_move
+                    SET
                         price_unit = %r,
                         value = %r,
                         remaining_value = %r
@@ -376,7 +370,8 @@ class StockMoveLine(models.Model):
 
             # memorizzo il risultato
             # recupero il prezzo standard dallo storico alla data di chisura
-            price_unit = product_id.get_history_customprice(company_id, closing_id.close_date)
+            # TODO https://github.com/marcelofrare/stock-logistics-workflow/commit/a2790a12047ca96a7c25dfa2e6dcb384e15b13f1#r46518838
+            price_unit = product_id.get_history_price(company_id, closing_id.close_date)
             # oppure il prezzo attuale se non trovo lo storico
             if price_unit == 0:
                 price_unit = product_id.standard_price
@@ -416,7 +411,7 @@ class StockMoveLine(models.Model):
         # delete all line with product_qty = 0
         query = """
             DELETE FROM
-                public.stock_close_period_line
+                stock_close_period_line
             WHERE
                 close_id = %r and product_qty = 0;
             """ % (closing_id.id)
